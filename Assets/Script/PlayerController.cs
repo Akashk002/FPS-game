@@ -1,10 +1,15 @@
 using Photon.Pun;
+using Photon.Realtime;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
 {
+    [SerializeField] private Slider healthSlider;
+    [SerializeField] private Canvas canvas;
     [SerializeField] private GameObject cameraHolder;
     [SerializeField] private float mouseSensitivity;
     [SerializeField] private float sprintSpeed;
@@ -14,6 +19,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Rigidbody rb;
     [SerializeField] private PhotonView pv;
     [SerializeField] private Item[] items;
+
     private int itemIndex;
     private int previousItemIndex = -1;
     private float verticalLookRotaion;
@@ -21,6 +27,28 @@ public class PlayerController : MonoBehaviour
     private Vector3 smoothMoveVelocity;
     private Vector3 moveAmount;
 
+    const float maxHealth = 100f;
+    private float currentHealth = maxHealth;
+
+    PlayerManager playerManager;
+
+    private void Awake()
+    {
+        playerManager = PhotonView.Find((int)pv.InstantiationData[0]).GetComponent<PlayerManager>();
+    }
+    private void Start()
+    {
+        if (pv.IsMine)
+        {
+            EquipItem(0);
+        }
+        else
+        {
+            Destroy(GetComponentInChildren<Camera>().gameObject);
+            Destroy(rb);
+            canvas.gameObject.SetActive(false);
+        }
+    }
     // Update is called once per frame
     void Update()
     {
@@ -61,18 +89,15 @@ public class PlayerController : MonoBehaviour
                 EquipItem(itemIndex - 1);
             }
         }
-    }
 
-    private void Start()
-    {
-        if (pv.IsMine)
+        if (Input.GetMouseButtonDown(0))
         {
-            EquipItem(0);
+            items[itemIndex].Use();
         }
-        else
+
+        if (transform.position.y < -10)
         {
-            Destroy(GetComponentInChildren<Camera>().gameObject);
-            Destroy(rb);
+            Die();
         }
     }
 
@@ -111,6 +136,21 @@ public class PlayerController : MonoBehaviour
         }
 
         previousItemIndex = itemIndex;
+
+        if (pv.IsMine)
+        {
+            Hashtable hash = new Hashtable();
+            hash.Add("ItemIndex", itemIndex);
+            PhotonNetwork.LocalPlayer.SetCustomProperties(hash);
+        }
+    }
+
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps)
+    {
+        if (!pv.IsMine && targetPlayer == pv.Owner)
+        {
+            EquipItem((int)changedProps["ItemIndex"]);
+        }
     }
 
     void Look()
@@ -124,5 +164,35 @@ public class PlayerController : MonoBehaviour
     public void SetGroundedState(bool grounded)
     {
         this.grounded = grounded;
+    }
+
+    public void TakeDamage(float damage)
+    {
+        pv.RPC("RPC_TakeDamage", RpcTarget.All, damage);
+    }
+
+    [PunRPC]
+    void RPC_TakeDamage(float damage)
+    {
+        if (!pv.IsMine) return;
+
+        // Handle taking damage here, e.g., reduce health, play animation, etc.
+        Debug.Log($"Player {pv.Owner.NickName} took {damage} damage.");
+
+        currentHealth -= damage;
+
+        Debug.Log($"Player {pv.Owner.NickName} has died.");
+        // Handle player death, e.g., respawn or end game
+        healthSlider.value = currentHealth / maxHealth;
+        if (currentHealth <= 0)
+        {
+            Die();
+        }
+
+    }
+
+    private void Die()
+    {
+        playerManager.Die(); // Call the PlayerManager's Die method to handle player death
     }
 }
