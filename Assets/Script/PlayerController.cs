@@ -147,7 +147,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
 
     public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps)
     {
-        if (!pv.IsMine && targetPlayer == pv.Owner)
+        if (changedProps.ContainsKey("ItemIndex") && !pv.IsMine && targetPlayer == pv.Owner)
         {
             EquipItem((int)changedProps["ItemIndex"]);
         }
@@ -168,25 +168,18 @@ public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
 
     public void TakeDamage(float damage)
     {
-        pv.RPC("RPC_TakeDamage", RpcTarget.All, damage);
+        pv.RPC(nameof(RPC_TakeDamage), pv.Owner, damage);
     }
 
     [PunRPC]
-    void RPC_TakeDamage(float damage)
+    void RPC_TakeDamage(float damage, PhotonMessageInfo info)
     {
-        if (!pv.IsMine) return;
-
-        // Handle taking damage here, e.g., reduce health, play animation, etc.
-        Debug.Log($"Player {pv.Owner.NickName} took {damage} damage.");
-
         currentHealth -= damage;
-
-        Debug.Log($"Player {pv.Owner.NickName} has died.");
-        // Handle player death, e.g., respawn or end game
         healthSlider.value = currentHealth / maxHealth;
         if (currentHealth <= 0)
         {
             Die();
+            PlayerManager.Find(info.Sender).GetKill(); // Call the GetKill method on the PlayerManager of the player who dealt the damage
         }
 
     }
@@ -195,4 +188,6 @@ public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
     {
         playerManager.Die(); // Call the PlayerManager's Die method to handle player death
     }
+
+
 }
